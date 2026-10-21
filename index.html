@@ -19,7 +19,7 @@
     <button id="btnExport" class="btn ghost">导出数据</button>
     <button id="btnImportJson" class="btn ghost">导入数据</button>
     <input type="file" id="fileImportJson" accept=".json" hidden />
-    <span id="syncState" class="save-state">…</span>
+    <span id="syncState" class="save-state">💾 本机存储</span>
     <span id="saveState" class="save-state">已保存</span>
   </div>
 </header>
@@ -36,7 +36,7 @@
   <section id="tab-roster" class="panel active">
     <div class="card">
       <h2>批量导入学生</h2>
-      <p class="hint">每行一个学生。格式：<code>张三</code> 或 <code>一班 张三</code> / <code>一班,张三</code>（首列为班级）。也可导入 .txt / .csv / <b>.xlsx（Excel）</b> 文件。<b>Excel 导入以「文件名」作为班级名</b>（如「一班.xlsx」→ 班级「一班」；可一次选多个文件，每个文件按各自文件名分班）；首行若为「姓名/学号」表头会自动跳过，并<b>同时提取学号与姓名</b>（无学号则只取姓名）。</p>
+      <p class="hint">每行一个学生。格式：<code>张三</code> 或 <code>一班 张三</code> / <code>一班,张三</code>（首列为班级）。也可导入 .txt / .csv / <b>.xlsx（Excel）</b> 文件。<b>Excel 导入以「文件名」作为班级名</b>（如「一班.xlsx」→ 班级「一班」；可一次选多个文件，每个文件按各自文件名分班，互不影响）；首行若为「姓名/学号」表头会自动跳过，且<b>只提取姓名与学号</b>，性别 / 电话 / 班级等无关列不会导入（不会再出现把“姓名”当成学生的情况）。</p>
       <textarea id="rosterImport" rows="6" placeholder="一班 张三&#10;一班 李四&#10;二班 王五&#10;..."></textarea>
       <div class="row">
         <button id="btnImport" class="btn primary">解析并导入</button>
@@ -75,6 +75,7 @@
         <div class="row">
           <select id="itemSelect"></select>
           <button id="btnNewItem" class="btn primary">＋ 新建</button>
+          <button id="btnDelItem" class="btn danger">🗑 删除</button>
         </div>
       </div>
       <div id="itemMeta" class="item-meta"></div>

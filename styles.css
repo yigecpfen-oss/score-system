@@ -40,6 +40,7 @@ button.btn{cursor:pointer;border:none;border-radius:8px;padding:9px 14px;font-si
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn.ghost{background:transparent}
 .btn:hover{filter:brightness(1.1)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
 .file-btn{display:inline-flex;align-items:center}
 
 .tag{background:var(--panel2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--muted)}

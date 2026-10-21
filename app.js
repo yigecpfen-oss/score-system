@@ -125,37 +125,58 @@
     if (idx > 0 && /[0-9高初中小职一二三四五六七八九十百千]/.test(base[idx - 1])) return base.slice(0, idx + 1);
     return base;
   }
-  // 解析 xlsx 行 -> [{cls, name, sid}]；班级一律用传入的 className（来自文件名），
-  // 姓名/学号优先按表头定位，无表头时按列内容推断（排除班级列与学号列）。
+  // 判断单元格是否像「人名」（2~4 个汉字，可带一个间隔号；排除班级/性别/备注/电话/表头等）
+  function isNameLike(x) {
+    const v = String(x || "").trim();
+    if (!v) return false;
+    const low = v.toLowerCase();
+    if (/班|年级|级|小组|性别|男|女|备注|电话|家长|联系|名单|花名册|表|姓名|名字|学生|name|student|学号|id|序号|编号|考号|成绩|分数/.test(low)) return false;
+    return /^[一-龥]{2,4}(·[一-龥]{1,2})?$/.test(v);
+  }
+  // 判断单元格是否为表头词（整行都是表头词时整行跳过）
+  function isHeaderCell(c) {
+    const v = String(c || "").trim().toLowerCase();
+    return /^(姓名|名字|名称|学生姓名|学生|学子|name|student|学号|考号|学籍|序号|编号|id|班级|年级|班|级|小组|组别|性别|男|女|备注|电话|家长|家长电话|联系方式)$/.test(v);
+  }
+  // 解析 xlsx 行 -> [{cls, name, sid}]；班级用传入的 className（来自文件名），
+  // 仅提取「姓名」与「学号」，自动跳过表头行与无关列，避免把“姓名/性别”等无关信息导成学生。
   function xlsxRowsToLines(rows, className) {
-    let data = rows;
-    let header = null;
-    if (data.length && data[0].some((c) => /姓名|名字|班级|学号|考号|学籍|name|Name|id|Id|ID/i.test(c))) {
-      header = data[0].map((c) => String(c || "").toLowerCase());
-      data = data.slice(1);
+    if (!rows.length) return [];
+    // 1) 扫描表头行（含 姓名/name 或 学号/id 关键词），确定姓名列与学号列索引，并跳过该表头及之前的标题行
+    let nameCol = -1, sidCol = -1;
+    for (let r = 0; r < rows.length; r++) {
+      const lower = rows[r].map((c) => String(c || "").trim().toLowerCase());
+      const hasNameH = lower.some((h) => /^(姓名|名字|名称|学生姓名|name|student)$/.test(h));
+      const hasIdH = lower.some((h) => /^(学号|考号|学籍|序号|编号|id)$/.test(h));
+      if (hasNameH || hasIdH) {
+        nameCol = lower.findIndex((h) => /^(姓名|名字|名称|学生姓名|name|student)$/.test(h));
+        sidCol = lower.findIndex((h) => /^(学号|考号|学籍|序号|编号|id)$/.test(h));
+        rows = rows.slice(r + 1);
+        break;
+      }
     }
     const out = [];
-    for (const row of data) {
+    for (const row of rows) {
       const cells = row.map((c) => String(c == null ? "" : c).trim());
       if (!cells.some(Boolean)) continue;
+      // 整行都是表头词 -> 跳过（防止多行表头/残留表头混入）
+      if (cells.every((c) => isHeaderCell(c))) continue;
       let name = "", sid = "";
-      if (header) {
-        const ni = header.findIndex((h) => /姓名|名字|name/.test(h));
-        const si = header.findIndex((h) => /学号|考号|学籍|id/.test(h));
-        if (ni >= 0) name = cells[ni] || "";
-        if (si >= 0) sid = cells[si] || "";
-      }
+      if (nameCol >= 0 && cells[nameCol] != null) name = cells[nameCol];
+      if (sidCol >= 0 && cells[sidCol] != null) sid = cells[sidCol];
       if (!name) {
-        const ci = cells.findIndex(isClassLike);
-        const idc = cells.findIndex((c) => /^\d{4,}$/.test(c));
-        const ni = cells.findIndex((c, i) => /[一-龥]/.test(c) && !/^\d+$/.test(c) && i !== ci && i !== idc);
+        const ni = cells.findIndex((c) => isNameLike(c));
         if (ni >= 0) name = cells[ni];
-        else { const fi = cells.findIndex((c, i) => i !== ci && i !== idc); if (fi >= 0) name = cells[fi]; }
-        if (idc >= 0 && !sid) sid = cells[idc];
+      }
+      if (!sid) {
+        const idc = cells.findIndex((c) => /^\d{4,}$/.test(c));
+        if (idc >= 0) sid = cells[idc];
       }
       name = (name || "").trim();
-      if (!name) continue;
-      out.push({ cls: className, name, sid: (sid || "").trim() });
+      // 只接受像人名的单元格；挡掉表头词、纯数字、班级/性别等无关内容
+      if (!name || !isNameLike(name)) continue;
+      sid = (sid || "").trim();
+      out.push({ cls: className, name, sid });
     }
     return out;
   }
@@ -282,7 +303,12 @@
         chip.className = "stu-chip";
         const nm = document.createElement("span"); nm.textContent = s.sid ? s.name + " · " + s.sid : s.name;
         const del = document.createElement("button"); del.textContent = "×";
-        del.onclick = () => { state.students = state.students.filter((x) => x.id !== s.id); delete state.scores && (state.scores = state.scores); save(); renderRoster(); renderAllSelectors(); };
+        del.onclick = () => {
+          if (!confirm("删除学生「" + s.name + "」？")) return;
+          state.students = state.students.filter((x) => x.id !== s.id);
+          for (const k in state.scores) if (state.scores[k]) delete state.scores[k][s.id];
+          save(); renderRoster(); renderAllSelectors(); renderGrid();
+        };
         chip.appendChild(nm); chip.appendChild(del); div.appendChild(chip);
       });
       box.appendChild(div);
@@ -778,6 +804,15 @@
       $("itemUnit").value = getItem(currentItemId) ? (getItem(currentItemId).unit || "") : "";
       $("itemDate").value = getItem(currentItemId) ? (getItem(currentItemId).date || today()) : today();
     };
+    $("btnDelItem").onclick = () => {
+      const it = getItem(currentItemId);
+      if (!it) return toast("请先在上方选择一个作业/考试", "warn");
+      if (!confirm("删除「" + it.name + "」？该项目的所有成绩也会一并删除。")) return;
+      state.items = state.items.filter((x) => x.id !== it.id);
+      if (state.scores[it.id]) delete state.scores[it.id];
+      currentItemId = null;
+      save(); renderItemSelect(); renderGrid(); renderAllSelectors(); toast("已删除：" + it.name);
+    };
     $("btnCancelItem").onclick = () => $("itemForm").classList.add("hidden");
     $("itemForm").onsubmit = (e) => {
       e.preventDefault();
@@ -832,19 +867,5 @@
   load().then(() => {
     bind();
     renderAll();
-    // 预置示例数据（首次无数据时），方便直接体验
-    if (!state.students.length && !state.items.length) {
-      ["一班 张三", "一班 李四", "一班 王五", "二班 赵六", "二班 钱七"].forEach((l) => parseRoster(l));
-      const mk = (name, type, unit, date) => { const it = { id: uid(), name, type, unit, date }; state.items.push(it); return it; };
-      const i1 = mk("第一单元测试", "作业", "第一单元", "2026-09-01");
-      const i2 = mk("第二单元测试", "作业", "第二单元", "2026-09-10");
-      const i3 = mk("第一次月考", "考试", "第一单元", "2026-09-15");
-      const set = (it, nm, cls, v) => { const s = state.students.find((x) => x.name === nm && x.class === cls); if (s) setScore(it.id, s.id, v); };
-      set(i1, "张三", "一班", 88); set(i1, "李四", "一班", 92); set(i1, "王五", "一班", 75); set(i1, "赵六", "二班", 81); set(i1, "钱七", "二班", 69);
-      set(i2, "张三", "一班", 90); set(i2, "李四", "一班", 85); set(i2, "王五", "一班", 70); set(i2, "赵六", "二班", 88); set(i2, "钱七", "二班", 95);
-      set(i3, "张三", "一班", 84); set(i3, "李四", "一班", 91); set(i3, "王五", "一班", 78); set(i3, "赵六", "二班", 83); set(i3, "钱七", "二班", 88);
-      save(); renderAll();
-    }
-    setSyncStatus();
   });
 })();
