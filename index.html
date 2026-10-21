@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>学生作业与考试成绩登记系统</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">📊</span>
+    <div>
+      <h1>学生成绩登记系统</h1>
+      <p class="sub">作业 / 考试登记 · 语音录入 · 双向对比分析</p>
+    </div>
+  </div>
+  <div class="data-actions">
+    <button id="btnExport" class="btn ghost">导出数据</button>
+    <button id="btnImportJson" class="btn ghost">导入数据</button>
+    <input type="file" id="fileImportJson" accept=".json" hidden />
+    <span id="syncState" class="save-state">…</span>
+    <span id="saveState" class="save-state">已保存</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="roster">① 学生名单</button>
+  <button class="tab" data-tab="register">② 成绩登记</button>
+  <button class="tab" data-tab="horizontal">③ 横向对比</button>
+  <button class="tab" data-tab="vertical">④ 纵向对比</button>
+</nav>
+
+<main>
+  <!-- ============ 名单 ============ -->
+  <section id="tab-roster" class="panel active">
+    <div class="card">
+      <h2>批量导入学生</h2>
+      <p class="hint">每行一个学生。格式：<code>张三</code> 或 <code>一班 张三</code> / <code>一班,张三</code>（首列为班级）。也可导入 .txt / .csv / <b>.xlsx（Excel）</b> 文件。<b>Excel 导入以「文件名」作为班级名</b>（如「一班.xlsx」→ 班级「一班」；可一次选多个文件，每个文件按各自文件名分班）；首行若为「姓名/学号」表头会自动跳过，并<b>同时提取学号与姓名</b>（无学号则只取姓名）。</p>
+      <textarea id="rosterImport" rows="6" placeholder="一班 张三&#10;一班 李四&#10;二班 王五&#10;..."></textarea>
+      <div class="row">
+        <button id="btnImport" class="btn primary">解析并导入</button>
+        <label class="btn ghost file-btn">选择文件(.txt/.csv)
+          <input type="file" id="fileImport" accept=".txt,.csv" hidden />
+        </label>
+        <label class="btn ghost file-btn">导入 Excel(.xlsx)
+          <input type="file" id="fileImportXlsx" accept=".xlsx" multiple hidden />
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>单个添加</h2>
+      <div class="row">
+        <input id="newClass" placeholder="班级（如 一班）" />
+        <input id="newName" placeholder="姓名" />
+        <button id="btnAdd" class="btn primary">添加</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>学生名单</h2>
+        <span id="rosterStats" class="tag">—</span>
+      </div>
+      <div id="rosterList" class="roster-list"></div>
+    </div>
+  </section>
+
+  <!-- ============ 登记 ============ -->
+  <section id="tab-register" class="panel">
+    <div class="card">
+      <div class="card-head">
+        <h2>当前作业 / 考试</h2>
+        <div class="row">
+          <select id="itemSelect"></select>
+          <button id="btnNewItem" class="btn primary">＋ 新建</button>
+        </div>
+      </div>
+      <div id="itemMeta" class="item-meta"></div>
+      <form id="itemForm" class="item-form hidden">
+        <input id="itemName" placeholder="名称，如 第一单元测试" required />
+        <select id="itemType">
+          <option value="作业">作业</option>
+          <option value="考试">考试</option>
+          <option value="测验">测验</option>
+        </select>
+        <input id="itemUnit" placeholder="单元（选填，如 第一单元）" />
+        <input id="itemDate" type="date" />
+        <button type="submit" class="btn primary">保存</button>
+        <button type="button" id="btnCancelItem" class="btn ghost">取消</button>
+      </form>
+    </div>
+
+    <div class="card voice-card">
+      <div class="card-head">
+        <h2>🎤 语音登记</h2>
+        <button id="btnVoice" class="btn voice-btn">开始语音登记</button>
+      </div>
+      <div id="voiceStatus" class="voice-status">未开始。点击上方按钮，先说出作业/考试名称，再逐条说“学生姓名 成绩”。</div>
+      <div id="liveTranscript" class="live"></div>
+      <div id="candBox" class="cand-box hidden"></div>
+      <div class="sim">
+        <input id="simInput" placeholder="无麦克风？在此输入模拟语音，如：张伟 95 / 数学测验" />
+        <button id="btnSim" class="btn ghost">识别</button>
+      </div>
+      <div id="voiceLog" class="voice-log"></div>
+    </div>
+
+    <div class="card">
+      <h2>成绩登记表（学生 × 作业 / 考试）</h2>
+      <p class="hint">可直接在格子内输入数字；语音录入会自动定位并高亮填充。</p>
+      <div id="grid" class="grid-wrap"></div>
+    </div>
+  </section>
+
+  <!-- ============ 横向 ============ -->
+  <section id="tab-horizontal" class="panel">
+    <div class="card">
+      <h2>横向对比 · 某学生的成绩走势</h2>
+      <div class="row wrap">
+        <label>学生 <select id="hStudent"></select></label>
+        <label>范围
+          <select id="hScope">
+            <option value="all">全部项目</option>
+            <option value="unit">按单元</option>
+            <option value="range">按时间段</option>
+          </select>
+        </label>
+        <span id="hUnitBox" class="hidden">单元 <span id="hUnits" class="chips"></span></span>
+        <span id="hRangeBox" class="hidden">从 <input type="date" id="hFrom" /> 到 <input type="date" id="hTo" /></span>
+        <button id="btnHRender" class="btn primary">生成分析</button>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>📈 成绩趋势图</h3>
+        <div id="hLine" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>🕸 雷达图（各单元均分 · 与班级均值对比）</h3>
+        <div id="hRadar" class="chart"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div id="hSummary" class="summary"></div>
+    </div>
+  </section>
+
+  <!-- ============ 纵向 ============ -->
+  <section id="tab-vertical" class="panel">
+    <div class="card">
+      <h2>纵向对比 · 某次作业 / 考试的全班或全年级</h2>
+      <div class="row wrap">
+        <label>项目 <select id="vItem"></select></label>
+        <label>范围
+          <select id="vScope">
+            <option value="grade">全年级</option>
+            <option value="class">全班</option>
+          </select>
+        </label>
+        <span id="vClassBox" class="hidden">班级 <select id="vClassSel"></select></span>
+        <button id="btnVRender" class="btn primary">生成分析</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="vStats" class="stats"></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>📊 成绩分布直方图</h3>
+        <div id="vHist" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>🏆 排名条形图</h3>
+        <div id="vRank" class="chart"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>排名明细</h3>
+      <div id="vTable" class="table-wrap"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
